@@ -300,6 +300,9 @@ def get_agent_status(agent):
         return "interactive"
     if agent["type"] == "autostart":
         return "autostart"
+    # Agents VPS : pas de systemctl local, on indique "vps"
+    if agent.get("source") == "vps":
+        return "vps"
     units = agent["timers"] + agent["services"]
     if not units:
         return "manual"
@@ -597,7 +600,10 @@ def build_agents_html(msg_html=""):
     for a in agents:
         status = get_agent_status(a)
 
-        if status == "active":
+        if status == "vps":
+            badge = '<span class="badge bg-green">VPS</span>'
+            is_on = True
+        elif status == "active":
             badge = '<span class="badge bg-green">ON</span>'
             is_on = True
         elif status == "autostart":
@@ -616,7 +622,9 @@ def build_agents_html(msg_html=""):
             badge = '<span class="badge bg-gray">OFF</span>'
             is_on = False
 
-        if a["type"] not in ("manual", "autostart", "interactive"):
+        if a.get("source") == "vps":
+            toggle_html = '<span class="muted">VPS</span>'
+        elif a["type"] not in ("manual", "autostart", "interactive"):
             next_action = "off" if is_on else "on"
             btn_label = "Desactiver" if is_on else "Activer"
             btn_class = "btn-off" if is_on else "btn-on"
@@ -631,8 +639,8 @@ def build_agents_html(msg_html=""):
 
         automation = a.get("automation", "—")
         tooltip_raw = a.get("tooltip", "")
+        source = a.get("source", "local")
 
-        agent_path = f"/home/egx/Bureau/agents-ia/agents/{a['id']}"
         row_style = ' style="background:#1a2a2a"' if a["id"] == "init-agent" else ""
 
         # Build description cell with optional expandable details
@@ -662,10 +670,13 @@ def build_agents_html(msg_html=""):
         else:
             desc_cell = a['description']
 
+        source_badge = '<span class="badge bg-blue">VPS</span>' if source == "vps" else '<span class="badge bg-gray">Local</span>'
+
         rows += f'''
         <tr{row_style}>
-          <td class="col-name"><strong>{a['name']}</strong><br><a href="/open?path={agent_path}" class="dir-link" target="_blank">{a['id']}/</a></td>
+          <td class="col-name"><strong>{a['name']}</strong></td>
           <td>{desc_cell}</td>
+          <td class="col-center">{source_badge}</td>
           <td class="col-center">{badge}</td>
           <td class="col-center">{toggle_html}</td>
           <td>{automation}</td>
@@ -678,6 +689,7 @@ def build_agents_html(msg_html=""):
     <tr>
       <th>Agent</th>
       <th>Description</th>
+      <th>Source</th>
       <th>Statut</th>
       <th>Controle</th>
       <th>Automatisation</th>
