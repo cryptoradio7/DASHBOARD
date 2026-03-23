@@ -75,12 +75,11 @@ CSS = '''
     white-space: nowrap;
   }
   table { table-layout: fixed; width: 100%; }
-  thead th:nth-child(1) { width: 11%; }
-  thead th:nth-child(2) { width: 30%; }
+  thead th:nth-child(1) { width: 10%; }
+  thead th:nth-child(2) { width: 28%; }
   thead th:nth-child(3) { width: 7%; }
-  thead th:nth-child(4) { width: 8%; }
-  thead th:nth-child(5) { width: 30%; }
-  thead th:nth-child(6) { width: 14%; }
+  thead th:nth-child(4) { width: 38%; }
+  thead th:nth-child(5) { width: 17%; }
   td { overflow: hidden; text-overflow: ellipsis; word-wrap: break-word; }
   td:nth-child(2) { overflow: visible; }
 
@@ -598,45 +597,6 @@ def build_agents_html(msg_html=""):
 
     rows = ""
     for a in agents:
-        status = get_agent_status(a)
-
-        if status == "vps":
-            badge = '<span class="badge bg-green">VPS</span>'
-            is_on = True
-        elif status == "active":
-            badge = '<span class="badge bg-green">ON</span>'
-            is_on = True
-        elif status == "autostart":
-            badge = '<span class="badge bg-blue">AUTO</span>'
-            is_on = False
-        elif status == "interactive":
-            badge = '<span class="badge bg-cyan">INTERACTIF</span>'
-            is_on = False
-        elif status == "manual":
-            badge = '<span class="badge bg-purple">MANUEL</span>'
-            is_on = False
-        elif status == "failed":
-            badge = '<span class="badge bg-red">ERREUR</span>'
-            is_on = False
-        else:
-            badge = '<span class="badge bg-gray">OFF</span>'
-            is_on = False
-
-        if a.get("source") == "vps":
-            toggle_html = '<span class="muted">VPS</span>'
-        elif a["type"] not in ("manual", "autostart", "interactive"):
-            next_action = "off" if is_on else "on"
-            btn_label = "Desactiver" if is_on else "Activer"
-            btn_class = "btn-off" if is_on else "btn-on"
-            toggle_html = f'''
-            <form method="POST" action="/toggle" style="display:inline">
-              <input type="hidden" name="id" value="{a['id']}">
-              <input type="hidden" name="action" value="{next_action}">
-              <button type="submit" class="toggle-btn {btn_class}">{btn_label}</button>
-            </form>'''
-        else:
-            toggle_html = '<span class="muted">—</span>'
-
         automation = a.get("automation", "—")
         tooltip_raw = a.get("tooltip", "")
         source = a.get("source", "local")
@@ -677,8 +637,6 @@ def build_agents_html(msg_html=""):
           <td class="col-name"><strong>{a['name']}</strong></td>
           <td>{desc_cell}</td>
           <td class="col-center">{source_badge}</td>
-          <td class="col-center">{badge}</td>
-          <td class="col-center">{toggle_html}</td>
           <td>{automation}</td>
           <td class="col-stack">{a['stack']}</td>
         </tr>'''
@@ -690,8 +648,6 @@ def build_agents_html(msg_html=""):
       <th>Agent</th>
       <th>Description</th>
       <th>Source</th>
-      <th>Statut</th>
-      <th>Controle</th>
       <th>Automatisation</th>
       <th>Stack</th>
     </tr>
