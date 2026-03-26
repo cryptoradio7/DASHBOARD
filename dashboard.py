@@ -577,7 +577,7 @@ def build_header(active_tab="agents"):
     <p class="subtitle">Cockpit Claude Code &middot; <a href="/" style="color:#58a6ff">Actualiser</a></p>
   </div>
   <div style="display:flex;gap:10px">
-    <a href="https://claude.ai/settings/billing" target="_blank" class="billing-link">Forfait Claude &rarr;</a>
+    <a href="https://claude.ai/settings/usage" target="_blank" class="billing-link">Forfait Claude &rarr;</a>
     <a href="https://console.anthropic.com/settings/billing" target="_blank" class="billing-link">Claude API &rarr;</a>
     <a href="https://platform.deepseek.com/usage" target="_blank" class="billing-link">DeepSeek API{f" (${deepseek_bal})" if deepseek_bal else ""} &rarr;</a>
   </div>
