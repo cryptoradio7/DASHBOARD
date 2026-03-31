@@ -605,7 +605,7 @@ def get_key_files():
         ("Guide Agent Optimal", "~/Bureau/agents-ia/docs/guides/guide_agent_optimal.md", "Source of truth — construire un agent optimal (anatomie, questionnaire 9 blocs, orchestration)"),
         ("Infrastructure Client", "~/Bureau/agents-ia/docs/guides/infrastructure_client.md", "Architecture deploiement client (Docker, OpenClaw, AWS, backup)"),
         ("Templates Agent", "~/Bureau/agents-ia/docs/templates/", "Squelettes T01-T08 pour /init-agent (CLAUDE.md, SPECS, SKILL, state, hooks, .gitignore)"),
-        ("Services web", "~/Bureau/agents-ia/agents/web-login/context/services.json", "URLs des services web pour ouverture navigateur (8 sites)"),
+        ("Services web", "~/Bureau/agents-ia/docs/services.json", "URLs des services web pour ouverture navigateur"),
     ]
     result = []
     for label, path, desc in files:
@@ -839,7 +839,7 @@ def build_config_html():
       <tr>
         <td><strong style="color:#58a6ff">Agents</strong></td>
         <td>Services automatises via systemd (timers/cron). Geres depuis l\'onglet Agents. Registry dans <a href="file://{home}/Bureau/agents-ia/agents/registry.json" class="dir-link">registry.json</a>.</td>
-        <td><strong>Veille cyber</strong> = newsletter 6h30, <strong>web-login</strong> = connexion sites</td>
+        <td><strong>Veille cyber</strong> = newsletter 6h30, <strong>linkedin-post</strong> = posts LinkedIn</td>
       </tr>
       <tr>
         <td><strong style="color:#58a6ff">Memoire</strong></td>
