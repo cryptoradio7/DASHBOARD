@@ -49,16 +49,6 @@ APPS_CONFIG = [
         "icon": "📡",
     },
     {
-        "id": "dashboard",
-        "name": "Dashboard Agents",
-        "desc": "Cockpit Claude Code — agents, config, MCP",
-        "path": str(APPS_DIR / "DASHBOARD"),
-        "type": "self",
-        "port": 8787,
-        "url": "http://localhost:8787",
-        "icon": "⚙️",
-    },
-    {
         "id": "post-its",
         "name": "Post-its",
         "desc": "Post-its memo desktop (GTK)",
@@ -415,6 +405,15 @@ def start_app(app_id):
                 stdout=lf, stderr=lf,
                 start_new_session=True
             )
+        # Ouvrir le navigateur pour les apps web apres un court delai
+        url = app.get("url")
+        if url and app["type"] in ("web", "static"):
+            import threading
+            def open_browser():
+                import time
+                time.sleep(3)
+                subprocess.Popen(["xdg-open", url], start_new_session=True)
+            threading.Thread(target=open_browser, daemon=True).start()
         return f"{app['name']} demarre"
     except Exception as e:
         return f"Erreur demarrage {app['name']}: {e}"
@@ -1063,7 +1062,6 @@ def build_apps_html(msg_html=""):
             open_btns += f'<a href="{url}" target="_blank" class="toggle-btn btn-on" style="text-decoration:none;margin-left:6px;display:inline-block">Ouvrir</a>'
 
         open_btns += f'''<a href="/open?path={app['path']}" class="toggle-btn" style="background:#1a2a3c;color:#58a6ff;text-decoration:none;margin-left:6px;display:inline-block">Dossier</a>'''
-        open_btns += f'''<a href="javascript:void(0)" onclick="fetch('/cursor?path={app['path']}')" class="toggle-btn" style="background:#21262d;color:#c9d1d9;text-decoration:none;margin-left:6px;display:inline-block">Cursor</a>'''
 
         cards += f'''
         <div class="card" style="display:flex;align-items:center;gap:20px;padding:20px">
@@ -1122,14 +1120,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             self.send_response(404)
-            self.end_headers()
-            return
-
-        if path == "/cursor":
-            target = params.get("path", [""])[0]
-            if target and os.path.exists(target):
-                subprocess.Popen(["cursor", target])
-            self.send_response(204)
             self.end_headers()
             return
 
