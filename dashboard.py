@@ -19,7 +19,56 @@ COMMANDS_DIR = CLAUDE_DIR / "commands"
 MEMORY_DIR = CLAUDE_DIR / "projects" / "-home-egx" / "memory"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 CLAUDE_MD = CLAUDE_DIR / "CLAUDE.md"
+APPS_DIR = Path.home() / "Bureau" / "APPS"
 PORT = 8787
+
+# ─── Apps configuration ───
+APPS_CONFIG = [
+    {
+        "id": "agilevizion",
+        "name": "AgileVizion",
+        "desc": "Site de vente vertical agilevizion.com",
+        "path": str(APPS_DIR / "agilevizion"),
+        "type": "static",
+        "port": 8001,
+        "start": "python3 -m http.server 8001",
+        "process_grep": "http.server 8001",
+        "url": "http://localhost:8001",
+        "icon": "🌐",
+    },
+    {
+        "id": "cryptoradio",
+        "name": "CryptoRadio",
+        "desc": "Dashboard BTC Analyst — score 0-100, analyse IA",
+        "path": str(APPS_DIR / "cryptoradio"),
+        "type": "web",
+        "port": 3000,
+        "start": "bash start.sh",
+        "process_grep": "uvicorn.*8000|next.*3000",
+        "url": "http://localhost:3000",
+        "icon": "📡",
+    },
+    {
+        "id": "dashboard",
+        "name": "Dashboard Agents",
+        "desc": "Cockpit Claude Code — agents, config, MCP",
+        "path": str(APPS_DIR / "DASHBOARD"),
+        "type": "self",
+        "port": 8787,
+        "url": "http://localhost:8787",
+        "icon": "⚙️",
+    },
+    {
+        "id": "post-its",
+        "name": "Post-its",
+        "desc": "Post-its memo desktop (GTK)",
+        "path": str(APPS_DIR / "post-its"),
+        "type": "desktop",
+        "start": "python3 src/main.py",
+        "process_grep": "post-its/src/main.py",
+        "icon": "📌",
+    },
+]
 
 CSS = '''
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -316,6 +365,88 @@ def get_agent_status(agent):
     return "inactive"
 
 
+# ─── Apps management ───
+
+def get_app_status(app):
+    """Check if an app is running."""
+    if app["type"] == "self":
+        return "running"  # dashboard is always running if we're here
+    grep_pattern = app.get("process_grep", "")
+    if not grep_pattern:
+        return "stopped"
+    try:
+        r = subprocess.run(
+            ["pgrep", "-f", grep_pattern.split("|")[0]],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return "running"
+        # Try other patterns if pipe-separated
+        for pattern in grep_pattern.split("|")[1:]:
+            r2 = subprocess.run(
+                ["pgrep", "-f", pattern],
+                capture_output=True, text=True, timeout=5
+            )
+            if r2.returncode == 0 and r2.stdout.strip():
+                return "running"
+    except Exception:
+        pass
+    return "stopped"
+
+
+def start_app(app_id):
+    app = next((a for a in APPS_CONFIG if a["id"] == app_id), None)
+    if not app:
+        return f"App {app_id} introuvable"
+    if app["type"] == "self":
+        return "Dashboard deja en cours"
+    if get_app_status(app) == "running":
+        return f"{app['name']} deja en cours"
+    start_cmd = app.get("start", "")
+    if not start_cmd:
+        return f"Pas de commande de demarrage pour {app['name']}"
+    log_path = Path(app["path"]) / "logs"
+    log_path.mkdir(exist_ok=True)
+    log_file = log_path / "dashboard-launch.log"
+    try:
+        with open(log_file, "a") as lf:
+            subprocess.Popen(
+                start_cmd, shell=True, cwd=app["path"],
+                stdout=lf, stderr=lf,
+                start_new_session=True
+            )
+        return f"{app['name']} demarre"
+    except Exception as e:
+        return f"Erreur demarrage {app['name']}: {e}"
+
+
+def stop_app(app_id):
+    app = next((a for a in APPS_CONFIG if a["id"] == app_id), None)
+    if not app:
+        return f"App {app_id} introuvable"
+    if app["type"] == "self":
+        return "Impossible d'arreter le dashboard depuis le dashboard"
+    grep_pattern = app.get("process_grep", "")
+    if not grep_pattern:
+        return f"Pas de pattern pour {app['name']}"
+    killed = []
+    for pattern in grep_pattern.split("|"):
+        try:
+            r = subprocess.run(
+                ["pgrep", "-f", pattern],
+                capture_output=True, text=True, timeout=5
+            )
+            for pid in r.stdout.strip().split("\n"):
+                if pid:
+                    subprocess.run(["kill", pid], capture_output=True, timeout=5)
+                    killed.append(pid)
+        except Exception:
+            pass
+    if killed:
+        return f"{app['name']} arrete (PID: {', '.join(killed)})"
+    return f"{app['name']} n'etait pas en cours"
+
+
 def toggle_agent(agent_id, action):
     agents = load_registry()
     agent = next((a for a in agents if a["id"] == agent_id), None)
@@ -553,6 +684,7 @@ def get_deepseek_balance():
 
 def build_header(active_tab="agents"):
     tab_agents = "active" if active_tab == "agents" else ""
+    tab_apps = "active" if active_tab == "apps" else ""
     tab_config = "active" if active_tab == "config" else ""
     deepseek_bal = get_deepseek_balance()
     # Section nav only on config page
@@ -584,6 +716,7 @@ def build_header(active_tab="agents"):
 </div>
 <div class="tabs">
   <a href="/" class="tab {tab_agents}">Agents</a>
+  <a href="/apps" class="tab {tab_apps}">Apps</a>
   <a href="/config" class="tab {tab_config}">Config</a>
 </div>
 {section_nav}'''
@@ -894,6 +1027,64 @@ def build_config_html():
 {files_html}'''
 
 
+def build_apps_html(msg_html=""):
+    cards = ""
+    for app in APPS_CONFIG:
+        status = get_app_status(app)
+        is_running = status == "running"
+        is_self = app["type"] == "self"
+
+        # Status badge
+        if is_running:
+            badge = '<span class="badge bg-green">EN COURS</span>'
+        else:
+            badge = '<span class="badge bg-gray">ARRETE</span>'
+
+        # Action buttons
+        if is_self:
+            actions = '<span style="color:#484f58;font-size:0.78rem">Ce dashboard</span>'
+        elif is_running:
+            actions = f'''<form method="POST" action="/apps" style="display:inline">
+                <input type="hidden" name="app_id" value="{app['id']}">
+                <input type="hidden" name="action" value="stop">
+                <button type="submit" class="toggle-btn btn-off">Arreter</button>
+            </form>'''
+        else:
+            actions = f'''<form method="POST" action="/apps" style="display:inline">
+                <input type="hidden" name="app_id" value="{app['id']}">
+                <input type="hidden" name="action" value="start">
+                <button type="submit" class="toggle-btn btn-on">Demarrer</button>
+            </form>'''
+
+        # Open buttons
+        open_btns = ""
+        url = app.get("url")
+        if url and is_running:
+            open_btns += f'<a href="{url}" target="_blank" class="toggle-btn btn-on" style="text-decoration:none;margin-left:6px;display:inline-block">Ouvrir</a>'
+
+        open_btns += f'''<a href="/open?path={app['path']}" class="toggle-btn" style="background:#1a2a3c;color:#58a6ff;text-decoration:none;margin-left:6px;display:inline-block">Dossier</a>'''
+        open_btns += f'''<a href="javascript:void(0)" onclick="fetch('/cursor?path={app['path']}')" class="toggle-btn" style="background:#21262d;color:#c9d1d9;text-decoration:none;margin-left:6px;display:inline-block">Cursor</a>'''
+
+        cards += f'''
+        <div class="card" style="display:flex;align-items:center;gap:20px;padding:20px">
+            <div style="font-size:2rem;width:48px;text-align:center">{app['icon']}</div>
+            <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+                    <strong style="color:#e6edf3;font-size:1rem">{app['name']}</strong>
+                    {badge}
+                </div>
+                <div style="color:#8b949e;font-size:0.82rem;margin-bottom:2px">{app['desc']}</div>
+                <div class="path">{app['path']}</div>
+            </div>
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+                {actions}
+                {open_btns}
+            </div>
+        </div>'''
+
+    return f'''{msg_html}{cards}'''
+
+
 def build_page(body, active_tab="agents"):
     header = build_header(active_tab)
     return f'''<!DOCTYPE html>
@@ -934,9 +1125,20 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if path == "/cursor":
+            target = params.get("path", [""])[0]
+            if target and os.path.exists(target):
+                subprocess.Popen(["cursor", target])
+            self.send_response(204)
+            self.end_headers()
+            return
+
         if path == "/config":
             body = build_config_html()
             html = build_page(body, "config")
+        elif path == "/apps":
+            body = build_apps_html()
+            html = build_page(body, "apps")
         else:
             body = build_agents_html()
             html = build_page(body, "agents")
@@ -949,7 +1151,31 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode()
         params = parse_qs(body)
+        parsed = urlparse(self.path)
+        post_path = parsed.path
 
+        # Apps actions
+        if post_path == "/apps":
+            app_id = params.get("app_id", [""])[0]
+            action = params.get("action", [""])[0]
+            msg_html = ""
+            if app_id and action:
+                if action == "start":
+                    result = start_app(app_id)
+                elif action == "stop":
+                    result = stop_app(app_id)
+                else:
+                    result = f"Action inconnue: {action}"
+                msg_html = f'<div class="msg">{result}</div>'
+            body_html = build_apps_html(msg_html)
+            html = build_page(body_html, "apps")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(html.encode())
+            return
+
+        # Agents actions (default)
         agent_id = params.get("id", [""])[0]
         action = params.get("action", [""])[0]
 
