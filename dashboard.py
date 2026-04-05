@@ -681,9 +681,150 @@ def get_deepseek_balance():
     return None
 
 
+def get_all_jobs():
+    """Collecte tous les cron jobs (crontab) et timers systemd."""
+    jobs = []
+
+    # 1) crontab
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            for line in out.stdout.strip().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split(None, 5)
+                if len(parts) >= 6:
+                    schedule = " ".join(parts[:5])
+                    command = parts[5]
+                    name = Path(command.split()[0]).name if command else command
+                    jobs.append({
+                        "type": "crontab",
+                        "name": name,
+                        "schedule": schedule,
+                        "command": command,
+                        "active": True,
+                        "last": "—",
+                        "next": "—",
+                    })
+    except Exception:
+        pass
+
+    # 2) systemd user timers
+    try:
+        out = subprocess.run(
+            ["systemctl", "--user", "list-timers", "--all", "--no-pager"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0:
+            for line in out.stdout.strip().splitlines():
+                if ".timer" not in line:
+                    continue
+                parts = line.split()
+                timer_idx = next((i for i, p in enumerate(parts) if p.endswith(".timer")), None)
+                if timer_idx is None:
+                    continue
+                timer_name = parts[timer_idx]
+
+                show = subprocess.run(
+                    ["systemctl", "--user", "show", timer_name,
+                     "--property=Description,ActiveState,LastTriggerUSec,NextElapseUSecRealtime,TimersCalendar"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                props = {}
+                for prop_line in show.stdout.strip().splitlines():
+                    if "=" in prop_line:
+                        k, v = prop_line.split("=", 1)
+                        props[k] = v
+
+                desc = props.get("Description", timer_name)
+                active_state = props.get("ActiveState", "unknown")
+                last_trigger = props.get("LastTriggerUSec", "—")
+                next_elapse = props.get("NextElapseUSecRealtime", "—")
+                calendar = props.get("TimersCalendar", "—")
+                if "OnCalendar=" in calendar:
+                    calendar = calendar.split("OnCalendar=")[1].split(";")[0].strip()
+
+                if last_trigger in ("n/a", "0"):
+                    last_trigger = "jamais"
+                if next_elapse in ("n/a", "0"):
+                    next_elapse = "—"
+
+                service_name = timer_name.replace(".timer", "")
+                # Filtrer les timers systeme (snap, launchpadlib, etc.)
+                if any(skip in timer_name for skip in ("snap.", "launchpadlib")):
+                    continue
+                jobs.append({
+                    "type": "systemd",
+                    "name": desc,
+                    "schedule": calendar,
+                    "command": service_name,
+                    "active": active_state == "active",
+                    "last": last_trigger,
+                    "next": next_elapse,
+                })
+    except Exception:
+        pass
+
+    return jobs
+
+
+def build_jobs_html():
+    """Construit le HTML de l'onglet Jobs."""
+    jobs = get_all_jobs()
+
+    n_total = len(jobs)
+    n_active = sum(1 for j in jobs if j["active"])
+    n_cron = sum(1 for j in jobs if j["type"] == "crontab")
+    n_systemd = sum(1 for j in jobs if j["type"] == "systemd")
+
+    rows = ""
+    for j in jobs:
+        type_badge = ('<span class="badge bg-cyan">systemd</span>'
+                      if j["type"] == "systemd"
+                      else '<span class="badge bg-purple">crontab</span>')
+        status_badge = ('<span class="badge bg-green">ACTIF</span>'
+                        if j["active"]
+                        else '<span class="badge bg-red">INACTIF</span>')
+        rows += f'''
+        <tr>
+          <td><strong>{j["name"]}</strong></td>
+          <td class="col-center">{type_badge}</td>
+          <td><code style="color:#58a6ff;font-size:0.75rem">{j["schedule"]}</code></td>
+          <td class="col-center">{status_badge}</td>
+          <td style="font-size:0.78rem;color:#8b949e">{j["last"]}</td>
+          <td style="font-size:0.78rem;color:#8b949e">{j["next"]}</td>
+          <td class="path" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">{j["command"]}</td>
+        </tr>'''
+
+    return f'''
+<div class="grid-3" style="margin-bottom:20px">
+  <div class="card"><div class="count">{n_total}</div><div class="label">Jobs total</div></div>
+  <div class="card"><div class="count">{n_active}</div><div class="label">Actifs</div></div>
+  <div class="card"><div class="count">{n_cron} crontab / {n_systemd} systemd</div><div class="label">Par type</div></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:18%">Nom</th>
+      <th style="width:8%">Type</th>
+      <th style="width:14%">Schedule</th>
+      <th style="width:7%">Statut</th>
+      <th style="width:18%">Derniere exec</th>
+      <th style="width:18%">Prochaine exec</th>
+      <th style="width:17%">Commande/Service</th>
+    </tr>
+  </thead>
+  <tbody>
+    {rows}
+  </tbody>
+</table>'''
+
+
 def build_header(active_tab="agents"):
     tab_agents = "active" if active_tab == "agents" else ""
     tab_apps = "active" if active_tab == "apps" else ""
+    tab_jobs = "active" if active_tab == "jobs" else ""
     tab_config = "active" if active_tab == "config" else ""
     deepseek_bal = get_deepseek_balance()
     # Section nav only on config page
@@ -716,6 +857,7 @@ def build_header(active_tab="agents"):
 <div class="tabs">
   <a href="/" class="tab {tab_agents}">Agents</a>
   <a href="/apps" class="tab {tab_apps}">Apps</a>
+  <a href="/jobs" class="tab {tab_jobs}">Jobs</a>
   <a href="/config" class="tab {tab_config}">Config</a>
 </div>
 {section_nav}'''
@@ -1089,7 +1231,7 @@ def build_page(body, active_tab="agents"):
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-{"<meta http-equiv='refresh' content='30'>" if active_tab == "agents" else ""}
+{"<meta http-equiv='refresh' content='30'>" if active_tab in ("agents", "jobs") else ""}
 <title>Dashboard — AgileVizion</title>
 <style>{CSS}</style>
 </head>
@@ -1129,6 +1271,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/apps":
             body = build_apps_html()
             html = build_page(body, "apps")
+        elif path == "/jobs":
+            body = build_jobs_html()
+            html = build_page(body, "jobs")
         else:
             body = build_agents_html()
             html = build_page(body, "agents")
